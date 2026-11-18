@@ -1,5 +1,5 @@
 import { metrics } from '../sim/analysis.js'
-import { fmt, NumInput, TANK_COLORS } from './ui.jsx'
+import { fmt, NumInput, TANK_COLORS, rangePct } from './ui.jsx'
 
 export default function Faceplate({ sim, j, bump }) {
   const L = sim.loops[j]
@@ -67,7 +67,7 @@ export default function Faceplate({ sim, j, bump }) {
               )}
             </div>
             {man ? (
-              <input type="range" min="0" max="100" step="0.5" value={L.out} onChange={(e) => setOP(+e.target.value)} aria-label={`${L.tag} manual output slider`} />
+              <input type="range" min="0" max="100" step="0.5" value={L.out} style={rangePct(L.out)} onChange={(e) => setOP(+e.target.value)} aria-label={`${L.tag} manual output slider`} />
             ) : (
               <div className={`opbar${sat ? ' sat' : ''}`}>
                 <div style={{ width: `${L.out}%` }} />

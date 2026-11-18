@@ -16,6 +16,9 @@ export function fmtTime(s) {
 export const fmt = (v, d = 2) => (v == null || !Number.isFinite(v) ? '—' : v.toFixed(d))
 export const sig = (v, d = 3) => (v == null || !Number.isFinite(v) ? '—' : Math.abs(v) >= 1e4 || (Math.abs(v) < 1e-3 && v !== 0) ? v.toExponential(d - 1) : +v.toPrecision(d) + '')
 
+/** Inline style giving a range input its fill position (WebKit has no native progress pseudo-element). */
+export const rangePct = (v, min = 0, max = 100) => ({ '--pct': `${((v - min) / (max - min || 1)) * 100}%` })
+
 /** Polynomial (descending coeffs) as text, e.g. "5210s² + 228s + 1.82". */
 export function poly(c) {
   const n = c.length - 1

@@ -1,5 +1,5 @@
 import { pumpFlow } from '../sim/model.js'
-import { fmt, TANK_COLORS } from './ui.jsx'
+import { fmt, TANK_COLORS, rangePct } from './ui.jsx'
 
 const TW = 150 // tank width [px]
 const PY = 14 // pipe height above tank base [px]
@@ -220,7 +220,7 @@ export function MimicPopover({ sim, sel, setSel, bump }) {
         <div className="row">Path <b>{from} → {to}</b></div>
         <div className="row">Flow <b>{fmt(q, 2)} mL/s</b></div>
         <div className="row">Opening <b>{p.valve} %</b></div>
-        <input type="range" min="0" max="100" value={p.valve} onChange={(e) => setV(+e.target.value)} aria-label={`${p.tag} opening`} />
+        <input type="range" min="0" max="100" value={p.valve} style={rangePct(p.valve)} onChange={(e) => setV(+e.target.value)} aria-label={`${p.tag} opening`} />
         <div className="inline" style={{ marginTop: 6 }}>
           {[0, 25, 50, 100].map((v) => <button key={v} className="btn sm" onClick={() => setV(v)}>{v}%</button>)}
         </div>

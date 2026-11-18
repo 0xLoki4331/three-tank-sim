@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react'
 import { stepTest, tuningRules, relayTest, fopdt, linearize, compareStep, metrics } from '../sim/analysis.js'
-import { G, evText } from '../sim/model.js'
-import { Chart, fmt, sig, poly, NumInput, Seg, TANK_COLORS, fmtTime as fmtClock } from './ui.jsx'
+import { G, evText, clamp } from '../sim/model.js'
+import { Chart, fmt, sig, poly, NumInput, Seg, TANK_COLORS, fmtTime as fmtClock, rangePct } from './ui.jsx'
 
 const TABS = [
   ['dist', 'Disturbances & faults'],
@@ -67,12 +67,34 @@ function Journal({ sim, bump }) {
 }
 
 // ======================================================================= disturbances
-function Slider({ label, value, min, max, step = 1, unit, onChange, color }) {
+/**
+ * Industrial fader: rectangular track with scale, gripped thumb, −/+ nudge buttons and an inset readout.
+ * The readout gets an amber edge when the value is off its normal position (HMI visibility of abnormal state).
+ */
+function Slider({ label, value, min, max, step = 1, unit, onChange, color, normal, nudge = (max - min) / 20 }) {
+  const d = step < 1 ? (step < 0.1 ? 2 : 1) : 0
+  const set = (v) => onChange(+clamp(v, min, max).toFixed(4))
+  const off = normal != null && Math.abs(value - normal) > 1e-9
   return (
-    <div className="srow">
-      <span style={color ? { color } : null}>{label}</span>
-      <input type="range" min={min} max={max} step={step} value={value} onChange={(e) => onChange(+e.target.value)} aria-label={label} />
-      <b>{fmt(value, step < 1 ? 1 : 0)} {unit}</b>
+    <div className="fader">
+      <span className="fader-label">
+        {color && <span className="key-dot" style={{ background: color }} />}
+        {label}
+      </span>
+      <button className="nudge" onClick={() => set(value - nudge)} disabled={value <= min} aria-label={`Decrease ${label}`}>−</button>
+      <div className="fader-track">
+        <input type="range" min={min} max={max} step={step} value={value} style={rangePct(value, min, max)} onChange={(e) => set(+e.target.value)} aria-label={label} />
+        <div className="fader-scale" aria-hidden="true">
+          <span>{min}</span>
+          <span>{(min + max) / 2}</span>
+          <span>{max}</span>
+        </div>
+      </div>
+      <button className="nudge" onClick={() => set(value + nudge)} disabled={value >= max} aria-label={`Increase ${label}`}>+</button>
+      <output className={`lcd${off ? ' off-normal' : ''}`} title={off ? `Off normal (normal = ${normal} ${unit})` : 'At normal position'}>
+        {fmt(value, Number.isInteger(value) ? 0 : Math.max(d, 1))}
+        <small>{unit}</small>
+      </output>
     </div>
   )
 }
@@ -105,27 +127,27 @@ function Disturbances({ sim, bump }) {
         <div className="box">
           <h3>Inflow disturbance Qd</h3>
           {P.tanks.map((t, i) => (
-            <Slider key={i} label={`into ${t.tag}`} color={TANK_COLORS[i]} value={P.qd[i] * 1e6} min={0} max={50} unit="mL/s" onChange={qd(i)} />
+            <Slider key={i} label={`into ${t.tag}`} color={TANK_COLORS[i]} value={P.qd[i] * 1e6} min={0} max={50} unit="mL/s" onChange={qd(i)} normal={0} nudge={1} />
           ))}
           <p className="note">Unmeasured extra inflow, e.g. a second feed. Watch the controller reject it.</p>
         </div>
         <div className="box">
           <h3>Leaks (drain valves)</h3>
           {leaks.map((p) => (
-            <Slider key={p.tag} label={`${p.tag} · ${P.tanks[p.from].tag}`} color={TANK_COLORS[p.from]} value={p.valve} min={0} max={100} unit="%" onChange={valve(p)} />
+            <Slider key={p.tag} label={`${p.tag} · ${P.tanks[p.from].tag}`} color={TANK_COLORS[p.from]} value={p.valve} min={0} max={100} unit="%" onChange={valve(p)} normal={0} />
           ))}
           <p className="note">Leak through a {fmt(leaks[0].a * 1e6, 0)} mm² hole at the tank bottom; flow ∝ √h.</p>
         </div>
         <div className="box">
           <h3>Process valves (blockage)</h3>
           {main.map((p) => (
-            <Slider key={p.tag} label={p.tag} value={p.valve} min={0} max={100} unit="%" onChange={valve(p)} />
+            <Slider key={p.tag} label={p.tag} value={p.valve} min={0} max={100} unit="%" onChange={valve(p)} normal={100} />
           ))}
           <p className="note">Closing a valve scales its effective flow area. Valves are also clickable on the diagram.</p>
         </div>
         <div className="box">
           <h3>Sensors & actuators</h3>
-          <Slider label="Level noise σ" value={sim.noise} min={0} max={2} step={0.05} unit="cm" onChange={noise} />
+          <Slider label="Level noise σ" value={sim.noise} min={0} max={2} step={0.05} unit="cm" onChange={noise} normal={0} nudge={0.1} />
           {P.pumps.map((pm, j) => (
             <div key={pm.tag} className="srow">
               <span>{pm.tag}</span>
