@@ -1,6 +1,6 @@
 // Run: npm test   — physics + controller + analysis sanity checks (no framework).
 import assert from 'node:assert/strict'
-import { Sim, G, PID, filterStep } from './model.js'
+import { Sim, G, PID, filterStep, evText } from './model.js'
 import { linearize, stepTest, tuningRules, relayTest, roots, metrics, designDecoupler } from './analysis.js'
 
 const near = (a, b, tol, msg) => assert.ok(Math.abs(a - b) <= tol, `${msg}: got ${a.toFixed(4)}, want ${b.toFixed(4)} ±${tol}`)
@@ -119,6 +119,27 @@ for (const key of ['dts200', 'series', 'interacting']) {
   const [off, stat, dyn] = ['off', 'static', 'dynamic'].map(run)
   assert.ok(dyn < 0.5 * off, `dynamic decoupler cuts interaction: ${dyn.toFixed(3)} vs ${off.toFixed(3)} cm`)
   console.log(`  decoupler   max Δh2 after SP1 40→48: off ${off.toFixed(3)} · static ${stat.toFixed(3)} · dynamic ${dyn.toFixed(3)} cm`)
+}
+
+// 9. Event journal: change → logged with undo; drags coalesce; restore-normal is undoable
+{
+  const s = new Sim('dts200')
+  const hv = s.P.pipes.find((p) => p.tag === 'HV-L3')
+  const set = (v) => s.change('HV-L3.valve', 'HV-L3 opening', () => hv.valve, (x) => (hv.valve = x), v, '%', 0)
+  set(10)
+  set(30)
+  set(60) // slider drag → one event 0 → 60
+  const ev = s.events.at(-1)
+  assert.equal(evText(ev), 'HV-L3 opening: 0 → 60 %', 'coalesced journal text')
+  s.undo(ev)
+  assert.equal(hv.valve, 0, 'undo restores the first old value')
+  s.setPumpFailed(1, true)
+  s.P.qd[0] = 1e-5
+  assert.ok(s.abnormal(), 'abnormal detected')
+  s.clearDisturbances()
+  assert.ok(!s.abnormal() && !s.P.pumps[1].failed, 'restore normal clears everything')
+  s.undo(s.events.at(-1))
+  assert.ok(s.P.pumps[1].failed && s.P.qd[0] === 1e-5, 'restore normal is undoable')
 }
 
 console.log('all checks passed')

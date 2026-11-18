@@ -8,12 +8,17 @@ export default function Faceplate({ sim, j, bump }) {
   const hmax = t.hmax * 100
   const pct = (v) => `${Math.min(100, Math.max(0, (v / hmax) * 100))}%`
   const man = L.mode === 'MAN'
-  const sat = L.out <= 0.01 || L.out >= 99.99
+  const sat = sim.t > 0 && (L.out <= 0.01 || L.out >= 99.99) // not before the controller has run
   const m = metrics(sim, j)
-  const setMode = (mode) => ((L.mode = mode), bump())
+  // every operator action goes through sim.change → journal entry, toast, undo
+  const ch = (k, label, get, set, unit, digits) => (v) => (sim.change(`${L.tag}.${k}`, `${L.tag} ${label}`, get, set, v, unit, digits), bump())
+  const setMode = ch('mode', 'mode', () => L.mode, (v) => (L.mode = v))
+  const setSP = ch('sp', 'SP', () => L.sp, (v) => sim.setSP(j, v), 'cm')
+  const setOP = ch('op', 'OP (manual)', () => L.out, (v) => (L.out = v), '%')
+  const setG = (k, unit, digits) => ch(k, k, () => L.pid[k], (v) => (L.pid[k] = v), unit, digits)
 
   return (
-    <section className="card fp" aria-label={`${L.tag} faceplate`}>
+    <section className="card fp" aria-label={`${L.tag} faceplate`} data-tour={`faceplate-${j}`}>
       <header>
         <span className="sw" style={{ background: TANK_COLORS[L.tank] }} />
         <div>
@@ -41,7 +46,7 @@ export default function Faceplate({ sim, j, bump }) {
           </div>
           <span>SP</span>
           <div className="inline">
-            <NumInput value={L.sp} min={0} max={hmax} step={1} digits={1} onCommit={(v) => (sim.setSP(j, v), bump())} aria-label={`${L.tag} setpoint`} />
+            <NumInput value={L.sp} min={0} max={hmax} step={1} digits={1} onCommit={setSP} aria-label={`${L.tag} setpoint`} />
             <span className="unit">cm</span>
             <span className="note" style={{ marginLeft: 'auto' }}>err {fmt(L.sp - L.meas, 2)}</span>
           </div>
@@ -49,7 +54,7 @@ export default function Faceplate({ sim, j, bump }) {
           <div>
             <div className="inline">
               {man ? (
-                <NumInput value={L.out} min={0} max={100} step={1} digits={1} onCommit={(v) => ((L.out = v), bump())} aria-label={`${L.tag} manual output`} />
+                <NumInput value={L.out} min={0} max={100} step={1} digits={1} onCommit={setOP} aria-label={`${L.tag} manual output`} />
               ) : (
                 <b className="mono" style={{ fontSize: 17, fontWeight: 500, minWidth: 86 }}>{fmt(L.out, 1)}</b>
               )}
@@ -62,7 +67,7 @@ export default function Faceplate({ sim, j, bump }) {
               )}
             </div>
             {man ? (
-              <input type="range" min="0" max="100" step="0.5" value={L.out} onChange={(e) => ((L.out = +e.target.value), bump())} aria-label={`${L.tag} manual output slider`} />
+              <input type="range" min="0" max="100" step="0.5" value={L.out} onChange={(e) => setOP(+e.target.value)} aria-label={`${L.tag} manual output slider`} />
             ) : (
               <div className={`opbar${sat ? ' sat' : ''}`}>
                 <div style={{ width: `${L.out}%` }} />
@@ -73,11 +78,11 @@ export default function Faceplate({ sim, j, bump }) {
       </div>
 
       <div className="tune">
-        <label className="field">Kc [%/cm]<NumInput value={L.pid.Kc} min={0} step={0.1} digits={3} onCommit={(v) => ((L.pid.Kc = v), bump())} /></label>
-        <label className="field">Ti [s] (0=off)<NumInput value={L.pid.Ti} min={0} step={5} digits={1} onCommit={(v) => ((L.pid.Ti = v), bump())} /></label>
-        <label className="field">Td [s]<NumInput value={L.pid.Td} min={0} step={1} digits={1} onCommit={(v) => ((L.pid.Td = v), bump())} /></label>
+        <label className="field">Kc [%/cm]<NumInput value={L.pid.Kc} min={0} max={1000} step={0.1} digits={3} onCommit={setG('Kc', '%/cm', 3)} /></label>
+        <label className="field">Ti [s] (0=off)<NumInput value={L.pid.Ti} min={0} max={100000} step={5} digits={1} onCommit={setG('Ti', 's')} /></label>
+        <label className="field">Td [s]<NumInput value={L.pid.Td} min={0} max={10000} step={1} digits={1} onCommit={setG('Td', 's')} /></label>
         <label className="chk" title="Anti-windup: freeze integral while output is saturated">
-          <input type="checkbox" checked={L.pid.aw} onChange={(e) => ((L.pid.aw = e.target.checked), bump())} /> AW
+          <input type="checkbox" checked={L.pid.aw} onChange={(e) => setG('aw')(e.target.checked)} /> AW
         </label>
       </div>
 

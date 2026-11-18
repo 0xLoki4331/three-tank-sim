@@ -189,6 +189,10 @@ export function filterStep(f, u, dt) {
   return f.b.reduce((s, bk, i) => s + bk * f.x[n - 1 - i], 0) + f.d * u
 }
 
+const fmtV = (v, d = 1) => (typeof v === 'boolean' ? (v ? 'on' : 'off') : typeof v === 'number' ? `${+v.toFixed(d)}` : String(v))
+/** Human-readable text for a journal event. */
+export const evText = (e) => e.text ?? `${e.label}: ${fmtV(e.old, e.digits)} → ${fmtV(e.value, e.digits)}${e.unit ? ' ' + e.unit : ''}`
+
 function gauss() {
   let u = 0
   while (!u) u = Math.random()
@@ -224,6 +228,72 @@ export class Sim {
     // decoupler for 2×2 presets: u = v + D(s)·(v − v0).  mode: 'off' | 'static' | 'dynamic'
     this.dec = { mode: 'off', D12: 0, D21: 0, f12: null, f21: null, y: [0, 0], v0: [0, 0], designed: false }
     this.resetHistory()
+    this.events = []
+    this.evId = 0
+    this.event({ kind: 'sys', text: `Loaded ${PRESETS[key].name}` })
+  }
+
+  // ---- operator event journal (HMI feedback): every action is time-stamped; most can be undone ----
+  event(e) {
+    const now = typeof performance !== 'undefined' ? performance.now() : Date.now()
+    const last = this.events[this.events.length - 1]
+    // coalesce repeated changes of the same thing (slider drags): keep the first old value + undo
+    if (e.key && last && last.key === e.key && !last.undone && now - last.at < 3000) {
+      Object.assign(last, { value: e.value, t: this.t, at: now })
+      return last
+    }
+    const ev = { id: ++this.evId, t: this.t, at: now, kind: 'op', ...e }
+    this.events.push(ev)
+    if (this.events.length > 500) this.events.shift()
+    return ev
+  }
+
+  /** Change a value through the journal: logs "label: old → new" with an undo. */
+  change(key, label, get, set, value, unit = '', digits = 1) {
+    const old = get()
+    if (old === value) return
+    set(value)
+    this.event({ key, label, old, value, unit, digits, undo: () => set(old) })
+  }
+
+  undo(ev) {
+    if (!ev.undo || ev.undone) return
+    ev.undo()
+    ev.undone = true
+    this.event({ kind: 'op', text: `Undone: ${evText(ev)}` })
+  }
+
+  setPumpFailed(j, failed) {
+    const pm = this.P.pumps[j]
+    if (!!pm.failed === failed) return
+    pm.failed = failed
+    this.event({ kind: failed ? 'fault' : 'op', text: `${pm.tag} ${failed ? 'tripped (fault injected)' : 'restored'}`, undo: () => (pm.failed = !failed) })
+  }
+
+  /** Anything off-normal that the operator injected? */
+  abnormal() {
+    const P = this.P
+    return this.noise > 0 || P.qd.some((v) => v > 0) || P.pumps.some((p) => p.failed) || P.pipes.some((p) => (p.leak ? p.valve > 0 : p.valve < 100))
+  }
+
+  /** One-click recovery: close leaks, open process valves, clear inflow disturbance, restore pumps, remove noise. */
+  clearDisturbances() {
+    const P = this.P
+    const snap = structuredClone({ pipes: P.pipes.map((p) => p.valve), qd: P.qd, failed: P.pumps.map((p) => !!p.failed), noise: this.noise })
+    P.pipes.forEach((p) => (p.valve = p.leak ? 0 : 100))
+    P.qd.fill(0)
+    P.pumps.forEach((p) => (p.failed = false))
+    this.noise = 0
+    this.event({
+      kind: 'sys',
+      text: 'Normal operation restored (disturbances cleared)',
+      undo: () => {
+        P.pipes.forEach((p, i) => (p.valve = snap.pipes[i]))
+        snap.qd.forEach((v, i) => (P.qd[i] = v))
+        P.pumps.forEach((p, i) => (p.failed = snap.failed[i]))
+        this.noise = snap.noise
+      },
+    })
   }
 
   resetHistory() {

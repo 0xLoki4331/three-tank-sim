@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react'
 import { stepTest, tuningRules, relayTest, fopdt, linearize, compareStep, metrics } from '../sim/analysis.js'
-import { G } from '../sim/model.js'
-import { Chart, fmt, sig, poly, NumInput, Seg, TANK_COLORS } from './ui.jsx'
+import { G, evText } from '../sim/model.js'
+import { Chart, fmt, sig, poly, NumInput, Seg, TANK_COLORS, fmtTime as fmtClock } from './ui.jsx'
 
 const TABS = [
   ['dist', 'Disturbances & faults'],
@@ -9,16 +9,19 @@ const TABS = [
   ['perf', 'Performance'],
   ['lin', 'Linear model'],
   ['model', 'Model & parameters'],
+  ['events', 'Event journal'],
 ]
 const secFmt = (v) => `${Math.round(v)}`
 
-export default function Panels({ sim, bump, theme, runs, setRuns }) {
-  const [tab, setTab] = useState('dist')
+export default function Panels({ sim, bump, theme, runs, setRuns, tab, setTab }) {
   return (
-    <section className="card tabs">
+    <section className="card tabs" data-tour="tabs">
       <nav className="tabbar" role="tablist">
         {TABS.map(([k, l]) => (
-          <button key={k} role="tab" aria-selected={tab === k} className={tab === k ? 'on' : ''} onClick={() => setTab(k)}>{l}</button>
+          <button key={k} role="tab" aria-selected={tab === k} className={tab === k ? 'on' : ''} onClick={() => setTab(k)}>
+            {l}
+            {k === 'events' && <span className="count">{sim.events.length}</span>}
+          </button>
         ))}
       </nav>
       <div className="tabpane" role="tabpanel">
@@ -27,8 +30,39 @@ export default function Panels({ sim, bump, theme, runs, setRuns }) {
         {tab === 'perf' && <Performance sim={sim} runs={runs} setRuns={setRuns} />}
         {tab === 'lin' && <LinearModel key={sim.key} sim={sim} theme={theme} />}
         {tab === 'model' && <ModelParams sim={sim} bump={bump} />}
+        {tab === 'events' && <Journal sim={sim} bump={bump} />}
       </div>
     </section>
+  )
+}
+
+// ======================================================================= event journal
+const KIND = { op: ['ACT', 'p0'], sys: ['SYS', 'p0'], fault: ['FAULT', 'p1'], alarm: ['ALM', 'p2'], clear: ['RTN', 'ok'] }
+
+function Journal({ sim, bump }) {
+  const evs = [...sim.events].reverse()
+  return (
+    <>
+      <p className="note" style={{ marginTop: 0 }}>
+        Every operator action, injected fault and alarm transition, newest first, stamped with simulation time. Actions marked ↶ can be undone.
+      </p>
+      <div style={{ maxHeight: 360, overflowY: 'auto' }}>
+        <table className="t">
+          <thead><tr><th>Sim time</th><th>Type</th><th>Event</th><th /></tr></thead>
+          <tbody>
+            {evs.map((e) => (
+              <tr key={e.id} style={e.undone ? { opacity: 0.5, textDecoration: 'line-through' } : null}>
+                <td>{fmtClock(e.t)}</td>
+                {/* same priority colours as the alarm strip */}
+                <td><span className={`alarm ${e.kind === 'alarm' ? `p${e.p ?? 2}` : (KIND[e.kind]?.[1] ?? 'p0')}`}><i>{KIND[e.kind]?.[0] ?? e.kind}</i></span></td>
+                <td className="l">{evText(e)}</td>
+                <td>{e.undo && !e.undone && <button className="btn sm" onClick={() => (sim.undo(e), bump())}>↶ Undo</button>}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </>
   )
 }
 
@@ -45,61 +79,58 @@ function Slider({ label, value, min, max, step = 1, unit, onChange, color }) {
 
 function Disturbances({ sim, bump }) {
   const P = sim.P
-  const main = P.pipes.map((p, k) => [p, k]).filter(([p]) => !p.leak)
-  const leaks = P.pipes.map((p, k) => [p, k]).filter(([p]) => p.leak)
-  const set = (fn) => () => (fn(), bump())
+  const main = P.pipes.filter((p) => !p.leak)
+  const leaks = P.pipes.filter((p) => p.leak)
   const last = P.tanks.length - 1
+  // all changes go through the journal → toast + undo
+  const valve = (p) => (v) => (sim.change(`${p.tag}.valve`, `${p.tag} opening`, () => p.valve, (x) => (p.valve = x), v, '%', 0), bump())
+  const qd = (i) => (v) => (sim.change(`qd${i}`, `Inflow disturbance → ${P.tanks[i].tag}`, () => +(P.qd[i] * 1e6).toFixed(3), (x) => (P.qd[i] = x * 1e-6), v, 'mL/s'), bump())
+  const noise = (v) => (sim.change('noise', 'Sensor noise σ', () => sim.noise, (x) => (sim.noise = x), v, 'cm', 2), bump())
+  const trip = (j) => () => (sim.setPumpFailed(j, !P.pumps[j].failed), bump())
   const scenarios = [
-    ['Leak in ' + P.tanks[last].tag + ' (60%)', () => (leaks[last][0].valve = 60)],
-    ['Partial blockage ' + main[1][0].tag + ' → 25%', () => (main[1][0].valve = 25)],
-    ['Inflow surge ' + P.tanks[1].tag + ' +25 mL/s', () => (P.qd[1] = 25e-6)],
-    ['Trip ' + P.pumps[P.pumps.length - 1].tag, () => (P.pumps[P.pumps.length - 1].failed = true)],
-    ['Noisy sensors (σ 0.5 cm)', () => (sim.noise = 0.5)],
+    ['Leak in ' + P.tanks[last].tag + ' (60%)', () => valve(leaks[last])(60)],
+    ['Partial blockage ' + main[1].tag + ' → 25%', () => valve(main[1])(25)],
+    ['Inflow surge ' + P.tanks[1].tag + ' +25 mL/s', () => qd(1)(25)],
+    ['Trip ' + P.pumps[P.pumps.length - 1].tag, () => P.pumps.at(-1).failed || trip(P.pumps.length - 1)()],
+    ['Noisy sensors (σ 0.5 cm)', () => noise(0.5)],
   ]
-  const clear = () => {
-    leaks.forEach(([p]) => (p.valve = 0))
-    main.forEach(([p]) => (p.valve = 100))
-    P.qd.fill(0)
-    P.pumps.forEach((pm) => (pm.failed = false))
-    sim.noise = 0
-  }
   return (
     <>
       <div className="toolbar">
-        {scenarios.map(([l, f]) => <button key={l} className="btn sm" onClick={set(f)}>{l}</button>)}
+        {scenarios.map(([l, f]) => <button key={l} className="btn sm" onClick={f}>{l}</button>)}
         <span className="spacer" />
-        <button className="btn sm primary" onClick={set(clear)}>Clear all disturbances</button>
+        <button className="btn sm primary" onClick={() => (sim.clearDisturbances(), bump())} disabled={!sim.abnormal()}>Restore normal operation</button>
       </div>
       <div className="cols">
         <div className="box">
           <h3>Inflow disturbance Qd</h3>
           {P.tanks.map((t, i) => (
-            <Slider key={i} label={`into ${t.tag}`} color={TANK_COLORS[i]} value={P.qd[i] * 1e6} min={0} max={50} unit="mL/s" onChange={(v) => ((P.qd[i] = v * 1e-6), bump())} />
+            <Slider key={i} label={`into ${t.tag}`} color={TANK_COLORS[i]} value={P.qd[i] * 1e6} min={0} max={50} unit="mL/s" onChange={qd(i)} />
           ))}
           <p className="note">Unmeasured extra inflow, e.g. a second feed. Watch the controller reject it.</p>
         </div>
         <div className="box">
           <h3>Leaks (drain valves)</h3>
-          {leaks.map(([p], i) => (
-            <Slider key={p.tag} label={`${p.tag} · ${P.tanks[p.from].tag}`} color={TANK_COLORS[p.from]} value={p.valve} min={0} max={100} unit="%" onChange={(v) => ((p.valve = v), bump())} />
+          {leaks.map((p) => (
+            <Slider key={p.tag} label={`${p.tag} · ${P.tanks[p.from].tag}`} color={TANK_COLORS[p.from]} value={p.valve} min={0} max={100} unit="%" onChange={valve(p)} />
           ))}
-          <p className="note">Leak through a {fmt(leaks[0][0].a * 1e6, 0)} mm² hole at the tank bottom; flow ∝ √h.</p>
+          <p className="note">Leak through a {fmt(leaks[0].a * 1e6, 0)} mm² hole at the tank bottom; flow ∝ √h.</p>
         </div>
         <div className="box">
           <h3>Process valves (blockage)</h3>
-          {main.map(([p]) => (
-            <Slider key={p.tag} label={p.tag} value={p.valve} min={0} max={100} unit="%" onChange={(v) => ((p.valve = v), bump())} />
+          {main.map((p) => (
+            <Slider key={p.tag} label={p.tag} value={p.valve} min={0} max={100} unit="%" onChange={valve(p)} />
           ))}
           <p className="note">Closing a valve scales its effective flow area. Valves are also clickable on the diagram.</p>
         </div>
         <div className="box">
           <h3>Sensors & actuators</h3>
-          <Slider label="Level noise σ" value={sim.noise} min={0} max={2} step={0.05} unit="cm" onChange={(v) => ((sim.noise = v), bump())} />
-          {P.pumps.map((pm) => (
+          <Slider label="Level noise σ" value={sim.noise} min={0} max={2} step={0.05} unit="cm" onChange={noise} />
+          {P.pumps.map((pm, j) => (
             <div key={pm.tag} className="srow">
               <span>{pm.tag}</span>
               <span className="note">{pm.failed ? 'TRIPPED — no flow' : 'running normally'}</span>
-              <button className={`btn sm${pm.failed ? ' primary' : ''}`} onClick={set(() => (pm.failed = !pm.failed))}>{pm.failed ? 'Restore' : 'Trip'}</button>
+              <button className={`btn sm${pm.failed ? ' primary' : ''}`} onClick={trip(j)}>{pm.failed ? 'Restore' : 'Trip'}</button>
             </div>
           ))}
           <p className="note">Noise enters the PV seen by the controller. Try derivative action with noise on.</p>
@@ -147,8 +178,12 @@ function TuningLab({ sim, bump, theme }) {
   }
   const apply = (r) => {
     const pid = sim.loops[res.li].pid
-    Object.assign(pid, { Kc: +r.Kc.toPrecision(3), Ti: +r.Ti.toFixed(1), Td: +r.Td.toFixed(1) })
-    setApplied(`${r.rule} ${r.kind} applied to ${sim.loops[res.li].tag}`)
+    const old = { Kc: pid.Kc, Ti: pid.Ti, Td: pid.Td }
+    const next = { Kc: +r.Kc.toPrecision(3), Ti: +r.Ti.toFixed(1), Td: +r.Td.toFixed(1) }
+    Object.assign(pid, next)
+    const tag = sim.loops[res.li].tag
+    sim.event({ text: `${tag} tuning ← ${r.rule} ${r.kind}: Kc ${next.Kc}, Ti ${next.Ti} s, Td ${next.Td} s (was ${+old.Kc.toPrecision(3)}, ${old.Ti}, ${old.Td})`, undo: () => Object.assign(pid, old) })
+    setApplied(`${r.rule} ${r.kind} applied to ${tag}`)
     bump()
   }
   const chart = useMemo(() => {
@@ -453,6 +488,7 @@ function LinearModel({ sim, theme }) {
 // ======================================================================= model & parameters
 function ModelParams({ sim, bump }) {
   const P = sim.P
+  const par = (key, label, get, set, unit, digits = 2) => (v) => (sim.change(key, label, get, set, v, unit, digits), bump())
   const name = (i) => `h${i + 1}`
   const qname = (p) => `q${p.tag.replace('HV-', '').toLowerCase()}`
   const eqs = P.tanks.map((t, i) => {
@@ -491,7 +527,7 @@ function ModelParams({ sim, bump }) {
               {P.tanks.map((t) => (
                 <tr key={t.tag}>
                   <td className="l">{t.tag}</td>
-                  <td><NumInput value={t.A * 1e4} min={10} max={2000} digits={1} onCommit={(v) => ((t.A = v * 1e-4), bump())} /></td>
+                  <td><NumInput value={t.A * 1e4} min={10} max={2000} digits={1} onCommit={par(`${t.tag}.A`, `${t.tag} area`, () => +(t.A * 1e4).toFixed(2), (v) => (t.A = v * 1e-4), 'cm²')} /></td>
                   <td>{fmt(t.hmax * 100, 0)}</td>
                 </tr>
               ))}
@@ -507,8 +543,8 @@ function ModelParams({ sim, bump }) {
                 <tr key={p.tag}>
                   <td className="l">{p.tag}</td>
                   <td className="l">{p.leak ? 'leak' : p.law}</td>
-                  <td><NumInput value={p.Cd} min={0.05} max={1} digits={3} onCommit={(v) => ((p.Cd = v), bump())} /></td>
-                  <td><NumInput value={p.a * 1e6} min={1} max={500} digits={1} onCommit={(v) => ((p.a = v * 1e-6), bump())} /></td>
+                  <td><NumInput value={p.Cd} min={0.05} max={1} digits={3} onCommit={par(`${p.tag}.Cd`, `${p.tag} Cd`, () => p.Cd, (v) => (p.Cd = v), '', 3)} /></td>
+                  <td><NumInput value={p.a * 1e6} min={1} max={500} digits={1} onCommit={par(`${p.tag}.a`, `${p.tag} area`, () => +(p.a * 1e6).toFixed(2), (v) => (p.a = v * 1e-6), 'mm²')} /></td>
                   <td>{p.valve}</td>
                 </tr>
               ))}
@@ -524,7 +560,7 @@ function ModelParams({ sim, bump }) {
                 <tr key={pm.tag}>
                   <td className="l">{pm.tag}</td>
                   <td className="l">{P.tanks[pm.tank].tag}</td>
-                  <td><NumInput value={pm.Qmax * 1e6} min={1} max={1000} digits={1} onCommit={(v) => ((pm.Qmax = v * 1e-6), bump())} /></td>
+                  <td><NumInput value={pm.Qmax * 1e6} min={1} max={1000} digits={1} onCommit={par(`${pm.tag}.Qmax`, `${pm.tag} capacity`, () => +(pm.Qmax * 1e6).toFixed(2), (v) => (pm.Qmax = v * 1e-6), 'mL/s')} /></td>
                 </tr>
               ))}
             </tbody>

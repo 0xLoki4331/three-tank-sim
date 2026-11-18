@@ -254,6 +254,12 @@ export function designDecoupler(sim) {
   }
 }
 
+/** Switch decoupler mode through the journal (designs it first if needed). */
+export function setDecouplerMode(sim, mode) {
+  if (mode !== 'off' && !sim.dec.designed) Object.assign(sim.dec, designDecoupler(sim))
+  sim.change('dec.mode', 'Decoupler UY-100', () => sim.dec.mode, (m) => sim.setDecoupler(m), mode)
+}
+
 /** Open-loop step of pump j by dOp from the linearisation point: nonlinear vs linear response. */
 export function compareStep(lin, j, dOp, T = 3000) {
   const s = lin.sim.clone()

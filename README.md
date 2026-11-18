@@ -40,6 +40,19 @@ Code layout:
 
 ## Features
 
+- **Onboarding.** The app opens **paused**, with a welcome dialog offering two guided modes. Both can be reopened with **Guide**.
+  - **Interface tour:** a spotlight walkthrough of every panel.
+  - **Guided demo:** eight one-click experiments with live status checks. It covers start-up, setpoint step, leak, pump trip, recovery, decoupling, metrics and tuning.
+- **HMI design (ISA-101 principles).**
+  - Colour carries meaning only, with the same key everywhere.
+  - Every operator action is confirmed by a toast with **Undo**.
+  - An **event journal** records actions, faults and alarm raise/return events, stamped with sim time.
+  - Reset and plant change ask for confirmation, with Cancel focused by default.
+  - **Restore normal operation** gives one-click recovery.
+  - Out-of-range inputs are limited, and you're told so.
+  - No nuisance alarms at start-up.
+  - Keyboard: <kbd>Space</kbd> runs/pauses, <kbd>Esc</kbd> cancels an edit, <kbd>←</kbd>/<kbd>→</kbd> step through the tour.
+
 - **Process mimic.** Animated flows, ISA tags, HI/HIHI level alarms, and clickable valves and pumps (open or close a valve, trip a pump).
 - **Faceplates.** PV, SP, OP and AUTO/MAN for each loop; Kc / Ti / Td and anti-windup are editable live; quick metrics for the last setpoint step.
 - **Trends.** Levels with setpoints, and controller outputs. Window from 2 min to all history. Pause to drag-zoom.

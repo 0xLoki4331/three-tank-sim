@@ -210,8 +210,9 @@ export function MimicPopover({ sim, sel, setSel, bump }) {
     const q = sim.flows()[sel.idx]
     const from = sim.P.tanks[p.from].tag
     const to = p.to == null ? 'reservoir' : sim.P.tanks[p.to].tag
+    const setV = (v) => (sim.change(`${p.tag}.valve`, `${p.tag} opening`, () => p.valve, (x) => (p.valve = x), v, '%', 0), bump())
     return (
-      <div className="pop" style={style}>
+      <div className="pop" style={style} role="dialog" aria-label={`${p.tag} valve control`}>
         <h4>
           {p.tag} <span className="note" style={{ fontWeight: 400 }}>{p.leak ? 'leak / drain valve' : 'hand valve'}</span>
           <button className="x" onClick={() => setSel(null)} aria-label="Close">×</button>
@@ -219,9 +220,9 @@ export function MimicPopover({ sim, sel, setSel, bump }) {
         <div className="row">Path <b>{from} → {to}</b></div>
         <div className="row">Flow <b>{fmt(q, 2)} mL/s</b></div>
         <div className="row">Opening <b>{p.valve} %</b></div>
-        <input type="range" min="0" max="100" value={p.valve} onChange={(e) => ((p.valve = +e.target.value), bump())} aria-label={`${p.tag} opening`} />
+        <input type="range" min="0" max="100" value={p.valve} onChange={(e) => setV(+e.target.value)} aria-label={`${p.tag} opening`} />
         <div className="inline" style={{ marginTop: 6 }}>
-          {[0, 25, 50, 100].map((v) => <button key={v} className="btn sm" onClick={() => ((p.valve = v), bump())}>{v}%</button>)}
+          {[0, 25, 50, 100].map((v) => <button key={v} className="btn sm" onClick={() => setV(v)}>{v}%</button>)}
         </div>
       </div>
     )
@@ -229,7 +230,7 @@ export function MimicPopover({ sim, sel, setSel, bump }) {
   const pm = sim.P.pumps[sel.idx]
   const L = sim.loops.find((l) => l.pump === sel.idx)
   return (
-    <div className="pop" style={style}>
+    <div className="pop" style={style} role="dialog" aria-label={`${pm.tag} pump control`}>
       <h4>
         {pm.tag} <span className="note" style={{ fontWeight: 400 }}>feed pump → {sim.P.tanks[pm.tank].tag}</span>
         <button className="x" onClick={() => setSel(null)} aria-label="Close">×</button>
@@ -238,7 +239,7 @@ export function MimicPopover({ sim, sel, setSel, bump }) {
       <div className="row">Output <b>{fmt(sim.u()[sel.idx], 1)} %</b></div>
       <div className="row">Flow <b>{fmt(pumpFlow(pm, sim.u()[sel.idx]) * 1e6, 1)} mL/s</b></div>
       <div className="row">Capacity <b>{fmt(pm.Qmax * 1e6, 0)} mL/s</b></div>
-      <button className={`btn sm${pm.failed ? ' primary' : ''}`} style={{ marginTop: 6, width: '100%' }} onClick={() => ((pm.failed = !pm.failed), bump())}>
+      <button className={`btn sm${pm.failed ? ' primary' : ''}`} style={{ marginTop: 6, width: '100%' }} onClick={() => (sim.setPumpFailed(sel.idx, !pm.failed), bump())}>
         {pm.failed ? 'Restore pump' : 'Trip pump (fault)'}
       </button>
     </div>

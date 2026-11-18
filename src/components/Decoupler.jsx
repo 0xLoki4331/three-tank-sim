@@ -1,6 +1,6 @@
 import { useState } from 'react'
-import { designDecoupler } from '../sim/analysis.js'
-import { fmt, sig, poly, NumInput, Seg } from './ui.jsx'
+import { designDecoupler, setDecouplerMode } from '../sim/analysis.js'
+import { fmt, sig, poly, NumInput } from './ui.jsx'
 
 const signed = (v) => (v >= 0 ? '+' : '−') + fmt(Math.abs(v), 2)
 const MODES =[['off', 'OFF'], ['static', 'STATIC'], ['dynamic', 'DYNAMIC']]
@@ -22,18 +22,16 @@ export default function Decoupler({ sim, bump }) {
     sim.setDecoupler('off') // bumpless: hand current pump OPs to the controllers, then redesign
     Object.assign(D, designDecoupler(sim))
     sim.setDecoupler(mode)
+    sim.event({ kind: 'op', text: `Decoupler UY-100 redesigned at h = ${D.at.map((h) => h.toFixed(1)).join(' / ')} cm` })
     bump()
   }
-  const setMode = (m) => {
-    if (m !== 'off' && !D.designed) Object.assign(D, designDecoupler(sim))
-    sim.setDecoupler(m)
-    bump()
-  }
+  const setMode = (m) => (setDecouplerMode(sim, m), bump())
+  const setD = (k) => (v) => (sim.change(`dec.${k}`, `Decoupler ${k}`, () => D[k], (x) => (D[k] = x), v, '', 4), bump())
   const f12 = D.num && tf(D.num.n12, D.num.m12)
   const f21 = D.num && tf(D.num.n21, D.num.m21)
 
   return (
-    <section className="card fp" aria-label="Decoupler">
+    <section className="card fp" aria-label="Decoupler" data-tour="decoupler">
       <header>
         <div>
           <div className="tag">UY-100 · Decoupler</div>
@@ -71,8 +69,8 @@ export default function Decoupler({ sim, bump }) {
                 </div>
                 {(!D.f12 || !D.f21) && <div className="warn">Ideal dynamic decoupler not realisable here (non-minimum-phase or improper); DYNAMIC falls back to static gains.</div>}
                 <div className="inline" style={{ gap: 8, flexWrap: 'wrap' }}>
-                  <label className="field" style={{ width: 100 }}>D₁₂ (static)<NumInput value={D.D12} digits={4} onCommit={(v) => ((D.D12 = v), bump())} /></label>
-                  <label className="field" style={{ width: 100 }}>D₂₁ (static)<NumInput value={D.D21} digits={4} onCommit={(v) => ((D.D21 = v), bump())} /></label>
+                  <label className="field" style={{ width: 100 }}>D₁₂ (static)<NumInput value={D.D12} min={-10} max={10} digits={4} onCommit={setD('D12')} /></label>
+                  <label className="field" style={{ width: 100 }}>D₂₁ (static)<NumInput value={D.D21} min={-10} max={10} digits={4} onCommit={setD('D21')} /></label>
                   <button className="btn sm" onClick={design} style={{ alignSelf: 'end' }}>Redesign at current point</button>
                 </div>
                 <p className="note" style={{ margin: 0 }}>

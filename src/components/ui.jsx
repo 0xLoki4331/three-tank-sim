@@ -34,22 +34,41 @@ export function poly(c) {
 /** Number input that commits on Enter/blur, so 30 fps re-renders don't fight the cursor. */
 export function NumInput({ value, onCommit, min = -Infinity, max = Infinity, step = 'any', digits = 2, className = 'num', ...rest }) {
   const [txt, setTxt] = useState(null)
+  const [warn, setWarn] = useState(null) // HMI feedback: say so when a value was limited or rejected
+  const flash = (msg) => (setWarn(msg), setTimeout(() => setWarn(null), 2500))
+  const cancel = useRef(false)
   const commit = () => {
     const v = parseFloat(txt)
-    if (txt != null && Number.isFinite(v)) onCommit(clamp(v, min, max))
+    if (cancel.current) cancel.current = false
+    else if (txt != null && txt !== '') {
+      if (!Number.isFinite(v)) flash('Not a number — value unchanged')
+      else {
+        const c = clamp(v, min, max)
+        if (c !== v) flash(`Limited to ${c} (range ${min} – ${max})`)
+        onCommit(c)
+      }
+    }
     setTxt(null)
   }
   return (
+    <span className="numwrap">
     <input
       type="number"
-      className={className}
+      className={`${className}${warn ? ' clamped' : ''}`}
+      title={warn ?? undefined}
+      aria-invalid={warn ? true : undefined}
       step={step}
       value={txt ?? (Number.isFinite(value) ? +value.toFixed(digits) : '')}
       onChange={(e) => setTxt(e.target.value)}
       onBlur={commit}
-      onKeyDown={(e) => e.key === 'Enter' && e.currentTarget.blur()}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter') e.currentTarget.blur()
+        if (e.key === 'Escape') ((cancel.current = true), e.currentTarget.blur()) // abandon edit
+      }}
       {...rest}
     />
+    {warn && <span className="numwarn" role="status">{warn}</span>}
+    </span>
   )
 }
 

@@ -38,7 +38,7 @@ export default function Trends({ sim, running, theme }) {
   const ymax = Math.max(...sim.P.tanks.map((t) => t.hmax * 100))
 
   return (
-    <section className="card trends">
+    <section className="card trends" data-tour="trends">
       <header>
         <h2>Trends</h2>
         <span className="hint">{running ? 'Live — pause to drag-zoom, double-click to reset' : 'Paused — drag to zoom, double-click to reset'}</span>
