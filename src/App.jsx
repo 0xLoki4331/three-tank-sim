@@ -70,6 +70,17 @@ export default function App() {
     } catch {}
   }, [theme])
 
+  // Space = run/pause (not while typing or when a button has focus)
+  useEffect(() => {
+    const onKey = (e) => {
+      if (e.code !== 'Space' || /^(INPUT|SELECT|TEXTAREA|BUTTON)$/.test(e.target.tagName)) return
+      e.preventDefault()
+      setRunning((r) => !r)
+    }
+    addEventListener('keydown', onKey)
+    return () => removeEventListener('keydown', onKey)
+  }, [])
+
   // real-time loop: fixed-step physics, UI repaint ≈ 30 fps
   useEffect(() => {
     let raf
@@ -122,12 +133,20 @@ export default function App() {
         </select>
         <span className="spacer" />
         <div className="clock" title="Simulated time">{fmtTime(sim.t)}<small>sim</small></div>
-        <button className={`btn${running ? '' : ' primary'}`} onClick={() => setRunning(!running)} style={{ minWidth: 88 }}>
+        <button className={`btn${running ? '' : ' primary'}`} onClick={() => setRunning(!running)} style={{ minWidth: 88 }} title="Run / pause (Space)">
           {running ? '❚❚ Pause' : '▶ Run'}
         </button>
         <button className="btn" onClick={() => load(sim.key)} title="Reset to empty tanks with preset parameters">⟲ Reset</button>
         <Seg value={speed} options={SPEEDS} onChange={setSpeed} label="Simulation speed" />
         <button className="btn" onClick={exportCSV} disabled={!sim.hist.t.length}>⤓ CSV</button>
+        <button
+          className="btn icon"
+          aria-label="Toggle fullscreen"
+          title="Fullscreen (for presenting)"
+          onClick={() => (document.fullscreenElement ? document.exitFullscreen() : document.documentElement.requestFullscreen?.())}
+        >
+          ⛶
+        </button>
         <button className="btn icon" onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')} aria-label="Toggle dark mode" title="Toggle theme">
           {theme === 'dark' ? '☀' : '☾'}
         </button>
@@ -151,8 +170,10 @@ export default function App() {
             <span className="hint">Click valves and pumps to operate them</span>
           </header>
           <div className="mimic-wrap">
-            <Mimic sim={sim} sel={sel} setSel={setSel} />
-            <MimicPopover sim={sim} sel={sel} setSel={setSel} bump={bump} />
+            <div className="mimic-inner" style={{ '--ar': sim.P.view.w / (sim.P.view.h - (sim.P.view.y0 || 0)) }}>
+              <Mimic sim={sim} sel={sel} setSel={setSel} />
+              <MimicPopover sim={sim} sel={sel} setSel={setSel} bump={bump} />
+            </div>
           </div>
           <p className="mimic-desc">{sim.P.desc}</p>
         </section>

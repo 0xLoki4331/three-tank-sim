@@ -88,6 +88,8 @@ export function Chart({ series, data, height = 200, yRange, yLabel, xRange, them
           { ...axis, label: yLabel, size: 52 },
         ],
         cursor: { drag: { x: true, y: false } },
+        // legend shows the latest sample whenever the cursor isn't over the plot
+        hooks: { setCursor: [(u) => u.cursor.idx == null && u.data[0].length && u.setLegend({ idx: u.data[0].length - 1 })] },
         series: [
           { label: 't', value: (_, v) => (v == null ? '—' : xFmt(v)) },
           ...series.map((s) => ({ label: s.label, stroke: cssVar(s.color), width: s.width ?? 1.6, dash: s.dash, points: { show: false }, value: (_, v) => (v == null ? '—' : v.toFixed(2)) })),
@@ -112,7 +114,8 @@ export function Chart({ series, data, height = 200, yRange, yLabel, xRange, them
     if (!u) return
     u.setData(data, !xRange)
     if (xRange) u.setScale('x', { min: xRange[0], max: xRange[1] })
+    if (u.cursor.idx == null && data[0].length) u.setLegend({ idx: data[0].length - 1 })
   }, [data, xRange?.[0], xRange?.[1]]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  return <div ref={el} />
+  return <div ref={el} style={{ overflow: 'hidden' }} />
 }

@@ -174,9 +174,10 @@ export default function Mimic({ sim, sel, setSel }) {
         )}
         {qd > 0.05 && (
           <g>
-            <path d={`M${t.cx + 20},${t.top - 70} V${t.top + 14}`} stroke="var(--dist)" strokeWidth="3" strokeDasharray="5 4" className="flowline" style={{ animationDuration: '1s' }} />
-            <path d={`M${t.cx + 13},${t.top + 8} l7,10 l7,-10 Z`} fill="var(--dist)" />
-            <text x={t.cx + 26} y={t.top - 56} fontSize="11" fill="var(--dist)" fontWeight="600">Qd {fmt(qd, 1)} mL/s</text>
+            {/* drawn inside the tank top so it never collides with pump inlets or readouts */}
+            <path d={`M${t.cx + 52},${t.top + 3} V${t.top + 30}`} stroke="var(--dist)" strokeWidth="3" strokeDasharray="5 4" className="flowline" style={{ animationDuration: '1s' }} />
+            <path d={`M${t.cx + 45},${t.top + 28} l7,10 l7,-10 Z`} fill="var(--dist)" />
+            <text x={t.cx + 40} y={t.top + 46} textAnchor="end" fontSize="11" fill="var(--dist)" fontWeight="600">Qd {fmt(qd, 1)} mL/s</text>
           </g>
         )}
       </g>
@@ -184,7 +185,7 @@ export default function Mimic({ sim, sel, setSel }) {
   })
 
   return (
-    <svg viewBox={`0 0 ${w} ${vh}`} role="img" aria-label={`Process diagram: ${P.name}`} onClick={(e) => e.target === e.currentTarget && setSel(null)}>
+    <svg viewBox={`0 ${P.view.y0 || 0} ${w} ${vh - (P.view.y0 || 0)}`} role="img" aria-label={`Process diagram: ${P.name}`} onClick={(e) => e.target === e.currentTarget && setSel(null)}>
       {/* reservoir */}
       <rect x="30" y={resTop} width={w - 60} height="44" rx="6" fill="var(--equip-fill)" stroke="var(--equip)" strokeWidth="1.5" />
       <rect x="32" y={resTop + 14} width={w - 64} height="28" rx="4" fill="var(--liquid)" opacity="0.55" />
@@ -201,8 +202,8 @@ export default function Mimic({ sim, sel, setSel }) {
 /** Popover for the selected valve/pump, absolutely positioned over the SVG. */
 export function MimicPopover({ sim, sel, setSel, bump }) {
   if (!sel) return null
-  const { w, h } = sim.P.view
-  const style = { left: `${(sel.x / w) * 100}%`, top: `${(sel.y / h) * 100}%` }
+  const { w, h, y0 = 0 } = sim.P.view
+  const style = { left: `${(sel.x / w) * 100}%`, top: `${((sel.y - y0) / (h - y0)) * 100}%` }
   if (sel.kind === 'valve') {
     const p = sim.P.pipes[sel.idx]
     if (!p) return null

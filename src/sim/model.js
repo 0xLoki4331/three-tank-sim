@@ -22,7 +22,7 @@ export const PRESETS = {
     name: 'DTS200 benchmark',
     short: 'MIMO · 2 pumps · 2 loops',
     desc: 'Amira DTS200 laboratory three-tank system. Pumps P-101 and P-102 feed the outer tanks T-1 and T-2; T-3 sits between them, coupled through bottom pipes. T-2 drains to the reservoir. Two coupled level loops make it a 2×2 MIMO problem.',
-    view: { w: 1060, h: 520 },
+    view: { w: 1060, h: 520, y0: 62 },
     tanks: [
       { tag: 'T-1', A: 0.0154, hmax: 0.62, x: 170, base: 410, hpx: 290 },
       { tag: 'T-2', A: 0.0154, hmax: 0.62, x: 690, base: 410, hpx: 290 },
@@ -66,7 +66,7 @@ export const PRESETS = {
     name: 'B · Interacting series',
     short: 'SISO · coupled · 3rd order',
     desc: 'Three tanks at the same elevation joined at the bottom. Flow between tanks depends on the level difference (q = Cd·a·sign(Δh)·√(2g|Δh|)), so downstream levels push back on upstream ones. Pump P-101 feeds T-1; LIC-103 controls T-3.',
-    view: { w: 1000, h: 520 },
+    view: { w: 1000, h: 520, y0: 62 },
     tanks: [
       { tag: 'T-1', A: 0.0154, hmax: 0.62, x: 170, base: 410, hpx: 290 },
       { tag: 'T-2', A: 0.0154, hmax: 0.62, x: 430, base: 410, hpx: 290 },
