@@ -1,7 +1,7 @@
 // Run: npm test   — physics + controller + analysis sanity checks (no framework).
 import assert from 'node:assert/strict'
-import { Sim, G, PID } from './model.js'
-import { linearize, stepTest, tuningRules, relayTest, roots, metrics } from './analysis.js'
+import { Sim, G, PID, filterStep } from './model.js'
+import { linearize, stepTest, tuningRules, relayTest, roots, metrics, designDecoupler } from './analysis.js'
 
 const near = (a, b, tol, msg) => assert.ok(Math.abs(a - b) <= tol, `${msg}: got ${a.toFixed(4)}, want ${b.toFixed(4)} ±${tol}`)
 const k = (p) => p.Cd * p.a * Math.sqrt(2 * G)
@@ -85,6 +85,40 @@ for (const key of ['dts200', 'series', 'interacting']) {
   d.run(3000)
   assert.ok(relayTest(d, 0, 10).hyst, 'DTS200 h1 loop is relative-degree 1 → relay flagged as hysteresis-dominated')
   console.log(`  FOPDT       K=${st.fit.K.toFixed(3)} τ=${st.fit.tau.toFixed(0)}s θ=${st.fit.theta.toFixed(0)}s   relay Ku=${rl.Ku.toFixed(2)} Pu=${rl.Pu.toFixed(0)}s`)
+}
+
+// 8. Decoupler: SP step on LIC-101 disturbs h2 much less; still tracks; switching is bumpless
+{
+  const run = (mode) => {
+    const s = new Sim('dts200')
+    s.run(3000)
+    if (mode !== 'off') {
+      const d = designDecoupler(s)
+      Object.assign(s.dec, d)
+      // dynamic filter DC gain must equal the static gain
+      const f = structuredClone(d.f21)
+      let y = 0
+      for (let k = 0; k < 40000; k++) y = filterStep(f, 1, 0.5)
+      near(y, d.D21, 1e-3, 'decoupler filter DC gain = −K21/K22')
+      const before = s.u()
+      s.setDecoupler(mode)
+      s.u().forEach((v, i) => near(v, before[i], 1e-9, `decoupler ${mode} ON bumpless`))
+    }
+    s.setSP(0, 48)
+    s.run(2500)
+    const m = metrics(s, 0)
+    near(s.h[0] * 100, 48, 0.3, `h1 tracks with decoupler ${mode}`)
+    near(s.h[1] * 100, 20, 0.3, `h2 holds with decoupler ${mode}`)
+    if (mode !== 'off') {
+      const before = s.u()
+      s.setDecoupler('off')
+      s.u().forEach((v, i) => near(v, before[i], 1e-9, `decoupler ${mode} OFF bumpless`))
+    }
+    return m.cross
+  }
+  const [off, stat, dyn] = ['off', 'static', 'dynamic'].map(run)
+  assert.ok(dyn < 0.5 * off, `dynamic decoupler cuts interaction: ${dyn.toFixed(3)} vs ${off.toFixed(3)} cm`)
+  console.log(`  decoupler   max Δh2 after SP1 40→48: off ${off.toFixed(3)} · static ${stat.toFixed(3)} · dynamic ${dyn.toFixed(3)} cm`)
 }
 
 console.log('all checks passed')

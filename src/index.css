@@ -213,7 +213,8 @@ svg .t-mono { font-family: var(--mono); }
 .minimet div { padding: 6px 10px; border-right: 1px solid var(--line); font-size: 10px; color: var(--muted); letter-spacing: 0.06em; text-transform: uppercase; }
 .minimet div:last-child { border-right: 0; }
 .minimet b { display: block; font-family: var(--mono); font-size: 13px; color: var(--text); font-weight: 500; text-transform: none; letter-spacing: 0; }
-.mode { display: inline-flex; border-radius: 5px; overflow: hidden; border: 1px solid var(--line-strong); margin-left: auto; }
+.fp > header { flex-wrap: wrap; row-gap: 6px; }
+.mode { flex: none; display: inline-flex; border-radius: 5px; overflow: hidden; border: 1px solid var(--line-strong); margin-left: auto; }
 .mode button { border: 0; padding: 3px 10px; font-size: 11px; font-weight: 700; letter-spacing: 0.06em; background: var(--panel); cursor: pointer; color: var(--muted); }
 .mode button.on.auto { background: var(--text); color: var(--panel-hi); }
 .mode button.on.man { background: var(--man); color: #fff; }

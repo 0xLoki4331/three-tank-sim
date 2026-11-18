@@ -16,6 +16,21 @@ export function fmtTime(s) {
 export const fmt = (v, d = 2) => (v == null || !Number.isFinite(v) ? '—' : v.toFixed(d))
 export const sig = (v, d = 3) => (v == null || !Number.isFinite(v) ? '—' : Math.abs(v) >= 1e4 || (Math.abs(v) < 1e-3 && v !== 0) ? v.toExponential(d - 1) : +v.toPrecision(d) + '')
 
+/** Polynomial (descending coeffs) as text, e.g. "5210s² + 228s + 1.82". */
+export function poly(c) {
+  const n = c.length - 1
+  const big = Math.max(...c.map(Math.abs))
+  const terms = c
+    .map((v, i) => [v, n - i])
+    .filter(([v]) => Math.abs(v) > 1e-9 * big)
+    .map(([v, p], i) => {
+      const s = sig(Math.abs(v), 3)
+      const sgn = v < 0 ? '− ' : i ? '+ ' : ''
+      return `${sgn}${p === 0 ? s : `${s}${p === 1 ? 's' : `s${'²³⁴'[p - 2]}`}`}`
+    })
+  return terms.join(' ') || '0'
+}
+
 /** Number input that commits on Enter/blur, so 30 fps re-renders don't fight the cursor. */
 export function NumInput({ value, onCommit, min = -Infinity, max = Infinity, step = 'any', digits = 2, className = 'num', ...rest }) {
   const [txt, setTxt] = useState(null)

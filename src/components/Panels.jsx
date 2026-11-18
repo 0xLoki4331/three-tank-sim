@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react'
 import { stepTest, tuningRules, relayTest, fopdt, linearize, compareStep, metrics } from '../sim/analysis.js'
 import { G } from '../sim/model.js'
-import { Chart, fmt, sig, NumInput, Seg, TANK_COLORS } from './ui.jsx'
+import { Chart, fmt, sig, poly, NumInput, Seg, TANK_COLORS } from './ui.jsx'
 
 const TABS = [
   ['dist', 'Disturbances & faults'],
@@ -252,7 +252,7 @@ function Performance({ sim, runs, setRuns }) {
   const ms = sim.loops.map((_, j) => metrics(sim, j))
   const save = (j) => {
     const L = sim.loops[j]
-    setRuns([...runs, { loop: L.tag, Kc: L.pid.Kc, Ti: L.pid.Ti, Td: L.pid.Td, aw: L.pid.aw, noise: sim.noise, ...ms[j] }])
+    setRuns([...runs, { loop: L.tag, Kc: L.pid.Kc, Ti: L.pid.Ti, Td: L.pid.Td, aw: L.pid.aw, noise: sim.noise, dec: sim.dec.mode, ...ms[j] }])
   }
   return (
     <>
@@ -279,6 +279,7 @@ function Performance({ sim, runs, setRuns }) {
                     <div><span>ISE</span><b>{fmt(m.ise, 0)}<small>cm²·s</small></b></div>
                     <div><span>SS error</span><b>{fmt(m.ess, 2)}<small>cm</small></b></div>
                     <div><span>Elapsed</span><b>{fmt(m.elapsed, 0)}<small>s</small></b></div>
+                    {m.cross != null && <div title={`Largest |SP − h| of ${m.crossTag} since this step`}><span>Interaction · max Δ {m.crossTag}</span><b>{fmt(m.cross, 3)}<small>cm</small></b></div>}
                   </div>
                   <button className="btn sm" style={{ marginTop: 10 }} onClick={() => save(j)}>Save run to comparison table</button>
                 </>
@@ -293,12 +294,12 @@ function Performance({ sim, runs, setRuns }) {
           <div className="empty">Save runs with different tunings to compare them side by side.</div>
         ) : (
           <table className="t">
-            <thead><tr><th>#</th><th>Loop</th><th>Kc</th><th>Ti</th><th>Td</th><th>AW</th><th>Noise σ</th><th>SP step</th><th>Rise [s]</th><th>OS [%]</th><th>Settle [s]</th><th>IAE</th><th>ISE</th></tr></thead>
+            <thead><tr><th>#</th><th>Loop</th><th>Kc</th><th>Ti</th><th>Td</th><th>AW</th><th>Noise σ</th><th>SP step</th><th>Rise [s]</th><th>OS [%]</th><th>Settle [s]</th><th>IAE</th><th>ISE</th><th>Decoupler</th><th>Max Δ other [cm]</th></tr></thead>
             <tbody>
               {runs.map((r, i) => (
                 <tr key={i}>
                   <td>{i + 1}</td><td>{r.loop}</td><td>{sig(r.Kc, 3)}</td><td>{fmt(r.Ti, 1)}</td><td>{fmt(r.Td, 1)}</td><td>{r.aw ? 'on' : 'off'}</td><td>{fmt(r.noise, 2)}</td>
-                  <td>{fmt(r.from, 1)}→{fmt(r.to, 1)}</td><td>{r.rise != null ? fmt(r.rise, 0) : '—'}</td><td>{fmt(r.overshoot, 1)}</td><td>{r.settling != null ? fmt(r.settling, 0) : 'n/s'}</td><td>{fmt(r.iae, 0)}</td><td>{fmt(r.ise, 0)}</td>
+                  <td>{fmt(r.from, 1)}→{fmt(r.to, 1)}</td><td>{r.rise != null ? fmt(r.rise, 0) : '—'}</td><td>{fmt(r.overshoot, 1)}</td><td>{r.settling != null ? fmt(r.settling, 0) : 'n/s'}</td><td>{fmt(r.iae, 0)}</td><td>{fmt(r.ise, 0)}</td><td>{r.dec}</td><td>{r.cross != null ? fmt(r.cross, 3) : '—'}</td>
                 </tr>
               ))}
             </tbody>
@@ -315,19 +316,6 @@ const Matrix = ({ M, d = 4 }) => (
     {M.flat().map((v, i) => <span key={i} style={{ textAlign: 'right' }}>{sig(v, d)}</span>)}
   </div>
 )
-
-function poly(c) {
-  const n = c.length - 1
-  const terms = c
-    .map((v, i) => [v, n - i])
-    .filter(([v]) => Math.abs(v) > 1e-12 * Math.max(...c.map(Math.abs)))
-    .map(([v, p], i) => {
-      const s = sig(Math.abs(v), 3)
-      const sgn = v < 0 ? '− ' : i ? '+ ' : ''
-      return `${sgn}${p === 0 ? s : `${s}${p === 1 ? 's' : `s${'²³⁴'[p - 2]}`}`}`
-    })
-  return terms.join(' ') || '0'
-}
 
 function LinearModel({ sim, theme }) {
   const [lin, setLin] = useState(null)

@@ -55,6 +55,11 @@ Code layout:
   - Full transfer-function matrix (Faddeev–LeVerrier).
   - RGA for the DTS200 pairing.
   - A plot of the linear model against the nonlinear step response.
+- **Decoupler (DTS200, UY-100).** Three modes: OFF, STATIC and DYNAMIC. All three are designed from the linear model, and switching between them is bumpless.
+  - STATIC is simplified decoupling: D₁₂ = −K₁₂/K₁₁, D₂₁ = −K₂₁/K₂₂.
+  - DYNAMIC is the ideal decoupler, Dᵢⱼ(s) = −Gᵢⱼ(s)/Gᵢᵢ(s). It is realised as an LTI filter.
+  - The Performance tab measures the interaction (worst deviation of the other loop).
+  - Test result for an SP₁ step from 40 to 48 cm, worst h₂ deviation: off 0.25 cm, static 2.28 cm, dynamic 0.03 cm. The static decoupler makes things *worse* here, because it ignores the slow path P-101 → T-1 → T-3 → T-2.
 - **Model & parameters.** The ODEs generated for the selected preset, with editable A, Cd, a and Q_max.
 - **Other:** CSV export of the full history, light (ISA-101 grey) and dark themes, speeds from 1× to 200×.
 
@@ -66,4 +71,5 @@ Code layout:
    Relay auto-tune on LIC-101 is a good teaching moment: the loop is effectively first order, so the app flags the result as hysteresis-dominated.
 4. **Preset A:** step SP 20 → 30. The response is slow and third-order. Tuning lab → step test shows the apparent dead time θ. Apply SIMC and compare runs in Performance.
 5. **Linear model:** three equal time constants (τ = 2Ah/Q). Set ΔOP = 30 % to show where the linearisation breaks down.
-6. **Preset B:** the same plant with interaction. The poles spread apart; compare with A.
+6. **Decoupler:** step SP₁ from 40 to 48 cm with the decoupler OFF, then STATIC, then DYNAMIC. Save each run in Performance and compare the "Max Δ other" column. Static makes the interaction worse; dynamic almost removes it.
+7. **Preset B:** the same plant with interaction. The poles spread apart; compare with A.

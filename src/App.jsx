@@ -3,6 +3,7 @@ import { Sim, PRESETS } from './sim/model.js'
 import { toCSV } from './sim/analysis.js'
 import Mimic, { MimicPopover } from './components/Mimic.jsx'
 import Faceplate from './components/Faceplate.jsx'
+import Decoupler from './components/Decoupler.jsx'
 import Trends from './components/Trends.jsx'
 import Panels from './components/Panels.jsx'
 import { Seg, fmtTime, fmt } from './components/ui.jsx'
@@ -158,6 +159,7 @@ export default function App() {
 
         <div className="plates">
           {sim.loops.map((L, j) => <Faceplate key={sim.key + L.tag} sim={sim} j={j} bump={bump} />)}
+          {sim.loops.length === 2 && <Decoupler key={sim.key} sim={sim} bump={bump} />}
         </div>
 
         <Trends sim={sim} running={running} theme={theme} />

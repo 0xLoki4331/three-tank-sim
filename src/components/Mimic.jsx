@@ -117,7 +117,7 @@ export default function Mimic({ sim, sel, setSel }) {
         </g>
         <text x={px} y={py - 30} textAnchor="middle" fontSize="12" fontWeight="600" fill="var(--text)">{pm.tag}</text>
         <text x={px - 26} y={py + 4} textAnchor="end" fontSize="11" className="t-mono" fill="var(--muted)">
-          <tspan x={px - 26} dy="-6">{fmt(L?.out ?? 0, 1)} %</tspan>
+          <tspan x={px - 26} dy="-6">{fmt(u[j], 1)} %</tspan>
           <tspan x={px - 26} dy="13">{fmt(q, 1)} mL/s</tspan>
         </text>
       </g>
@@ -234,8 +234,8 @@ export function MimicPopover({ sim, sel, setSel, bump }) {
         <button className="x" onClick={() => setSel(null)} aria-label="Close">×</button>
       </h4>
       <div className="row">Controller <b>{L?.tag ?? '—'} ({L?.mode})</b></div>
-      <div className="row">Output <b>{fmt(L?.out ?? 0, 1)} %</b></div>
-      <div className="row">Flow <b>{fmt(pumpFlow(pm, L?.out ?? 0) * 1e6, 1)} mL/s</b></div>
+      <div className="row">Output <b>{fmt(sim.u()[sel.idx], 1)} %</b></div>
+      <div className="row">Flow <b>{fmt(pumpFlow(pm, sim.u()[sel.idx]) * 1e6, 1)} mL/s</b></div>
       <div className="row">Capacity <b>{fmt(pm.Qmax * 1e6, 0)} mL/s</b></div>
       <button className={`btn sm${pm.failed ? ' primary' : ''}`} style={{ marginTop: 6, width: '100%' }} onClick={() => ((pm.failed = !pm.failed), bump())}>
         {pm.failed ? 'Restore pump' : 'Trip pump (fault)'}

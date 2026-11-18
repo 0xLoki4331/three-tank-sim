@@ -155,6 +155,40 @@ export class PID {
   }
 }
 
+// ---------------------------------------------------------------------------------------------
+// LTI filter N(s)/M(s) in controllable canonical form (used by the dynamic decoupler).
+// Plain data (no class) so Sim.clone() can structuredClone it.
+// ---------------------------------------------------------------------------------------------
+export function makeFilter(num, den) {
+  const trim = (c) => {
+    const m = Math.max(...c.map(Math.abs))
+    let i = 0
+    while (i < c.length - 1 && Math.abs(c[i]) < 1e-9 * m) i++
+    return c.slice(i)
+  }
+  let b = trim(num)
+  const a = trim(den).map((v, _, arr) => v / arr[0])
+  b = b.map((v) => v / trim(den)[0])
+  const n = a.length - 1
+  if (b.length - 1 > n) return null // improper → not realisable
+  let d = 0
+  if (b.length - 1 === n) {
+    d = b[0]
+    b = b.slice(1).map((v, i) => v - d * a[i + 1])
+  } else b = [...Array(n - b.length).fill(0), ...b]
+  return { a: a.slice(1), b, d, x: Array(n).fill(0) } // a, b descending; x[k] = w^(k)
+}
+
+/** Advance filter by dt with input u held (RK4); returns output y. */
+export function filterStep(f, u, dt) {
+  const n = f.x.length
+  const der = (z) => z.map((_, k) => (k < n - 1 ? z[k + 1] : u - z.reduce((s, zk, kk) => s + f.a[n - 1 - kk] * zk, 0)))
+  const add = (p, q, s) => p.map((v, i) => v + q[i] * s)
+  const k1 = der(f.x), k2 = der(add(f.x, k1, dt / 2)), k3 = der(add(f.x, k2, dt / 2)), k4 = der(add(f.x, k3, dt))
+  f.x = f.x.map((v, i) => v + (dt / 6) * (k1[i] + 2 * k2[i] + 2 * k3[i] + k4[i]))
+  return f.b.reduce((s, bk, i) => s + bk * f.x[n - 1 - i], 0) + f.d * u
+}
+
 function gauss() {
   let u = 0
   while (!u) u = Math.random()
@@ -187,6 +221,8 @@ export class Sim {
       pid: new PID(l),
       evt: { t0: 0, from: 0, to: l.sp },
     }))
+    // decoupler for 2×2 presets: u = v + D(s)·(v − v0).  mode: 'off' | 'static' | 'dynamic'
+    this.dec = { mode: 'off', D12: 0, D21: 0, f12: null, f21: null, y: [0, 0], v0: [0, 0], designed: false }
     this.resetHistory()
   }
 
@@ -201,11 +237,43 @@ export class Sim {
     }
   }
 
-  /** Pump OPs [%], indexed by pump. A pump with no loop runs at 0. */
+  /** Pump OPs [%], indexed by pump. Controller outputs v pass through the decoupler when it is on. */
   u() {
     const u = this.P.pumps.map(() => 0)
     for (const L of this.loops) u[L.pump] = L.out
-    return u
+    if (this.dec.mode !== 'off') {
+      const [a, b] = this.loops
+      u[a.pump] += this.dec.y[0]
+      u[b.pump] += this.dec.y[1]
+    }
+    return u.map((v) => clamp(v, 0, 100))
+  }
+
+  /** Decoupler compensation signals, updated at the controller sample rate. */
+  updateDecoupler() {
+    const D = this.dec
+    if (D.mode === 'off') return
+    const [a, b] = this.loops
+    const d2 = b.out - D.v0[1]
+    const d1 = a.out - D.v0[0]
+    D.y = D.mode === 'dynamic' && D.f12 && D.f21 ? [filterStep(D.f12, d2, TS), filterStep(D.f21, d1, TS)] : [D.D12 * d2, D.D21 * d1]
+  }
+
+  /** Bumpless switching: on → deviations start at 0; off → controllers inherit the actual pump OPs. */
+  setDecoupler(mode) {
+    const D = this.dec
+    if (mode === D.mode || this.loops.length !== 2) return
+    if (D.mode !== 'off') {
+      const u = this.u()
+      for (const L of this.loops) {
+        L.pid.I += u[L.pump] - L.out
+        L.out = u[L.pump]
+      }
+    }
+    D.mode = mode
+    D.y = [0, 0]
+    D.v0 = this.loops.map((L) => L.out)
+    for (const f of [D.f12, D.f21]) if (f) f.x.fill(0)
   }
 
   step() {
@@ -214,6 +282,7 @@ export class Sim {
         L.meas = this.h[L.tank] * 100 + (this.noise ? this.noise * gauss() : 0)
         L.out = L.pid.update(L.sp, L.meas, TS, L.mode, L.out)
       }
+      this.updateDecoupler()
     }
     this.h = rk4(this.h, this.u(), this.P, DT)
     this.t += DT
@@ -225,10 +294,11 @@ export class Sim {
     this.lastRec = this.t
     H.t.push(this.t)
     this.h.forEach((v, i) => H.h[i].push(v * 100))
+    const u = this.u()
     this.loops.forEach((L, j) => {
       H.sp[j].push(L.sp)
       H.pv[j].push(L.meas)
-      H.op[j].push(L.out)
+      H.op[j].push(u[L.pump]) // actual pump OP (after decoupler)
     })
     if (H.t.length > HIST_MAX) {
       const n = HIST_MAX / 10
@@ -269,6 +339,7 @@ export class Sim {
     s.h = [...this.h]
     s.record = false
     s.loops = this.loops.map((L) => ({ ...L, pid: Object.assign(new PID(), L.pid) }))
+    s.dec = structuredClone(this.dec)
     return s
   }
 }

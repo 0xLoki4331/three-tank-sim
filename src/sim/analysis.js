@@ -1,6 +1,6 @@
 // Analysis tools: step-test identification (FOPDT), tuning rules, relay auto-tune,
 // linearisation + transfer functions, closed-loop performance metrics, CSV export.
-import { deriv, clamp, DT } from './model.js'
+import { deriv, clamp, DT, makeFilter } from './model.js'
 
 /** Hold current OPs until levels stop moving. */
 export function settle(s, maxT = 6000) {
@@ -182,7 +182,9 @@ export function roots(c) {
  */
 export function linearize(sim) {
   const s = sim.clone()
-  s.loops.forEach((L) => (L.mode = 'MAN'))
+  const u = s.u() // freeze the actual pump OPs and bypass the decoupler → model of the bare plant
+  s.loops.forEach((L) => ((L.mode = 'MAN'), (L.out = u[L.pump])))
+  s.dec.mode = 'off'
   settle(s)
   const P = s.P
   const h0 = [...s.h]
@@ -224,6 +226,34 @@ export function linearize(sim) {
   return { A, B, h0: h0.map((v) => v * 100), u0, poles, tau: poles.map(([re]) => -1 / re), tf, sim: s }
 }
 
+/**
+ * Decoupler design from the linear model (Seborg et al., simplified decoupling).
+ *   static:  D12 = −K12/K11,        D21 = −K21/K22         (steady-state gains only)
+ *   dynamic: D12(s) = −G12/G11,     D21(s) = −G21/G22      (ideal; all Gij share one denominator,
+ *            so this is −num12/num11 — realisable when num_ii has degree ≥ num_ij and stable zeros)
+ */
+export function designDecoupler(sim) {
+  const lin = linearize(sim)
+  const g = (L, pump) => lin.tf.find((t) => t.out === L.tank && t.inp === pump)
+  const [a, b] = sim.loops
+  const G11 = g(a, a.pump), G12 = g(a, b.pump), G21 = g(b, a.pump), G22 = g(b, b.pump)
+  const [K11, K12, K21, K22] = [G11.K, G12.K, G21.K, G22.K]
+  const minPhase = (G) => G.zeros.every(([re]) => re < 0)
+  const f12 = minPhase(G11) ? makeFilter(G12.num.map((v) => -v), G11.num) : null
+  const f21 = minPhase(G22) ? makeFilter(G21.num.map((v) => -v), G22.num) : null
+  return {
+    D12: -K12 / K11,
+    D21: -K21 / K22,
+    f12,
+    f21,
+    num: { n12: G12.num, m12: G11.num, n21: G21.num, m21: G22.num },
+    K: [[K11, K12], [K21, K22]],
+    Kd: [K11 - (K12 * K21) / K22, K22 - (K21 * K12) / K11], // apparent diagonal gains, static decoupler
+    at: lin.h0,
+    designed: true,
+  }
+}
+
 /** Open-loop step of pump j by dOp from the linearisation point: nonlinear vs linear response. */
 export function compareStep(lin, j, dOp, T = 3000) {
   const s = lin.sim.clone()
@@ -263,7 +293,12 @@ export function metrics(sim, j) {
   const y = H.h[L.tank]
   const sp = H.sp[j]
   let t10 = null, t90 = null, peak = -Infinity, tPeak = null, lastOut = null, iae = 0, ise = 0
+  // interaction: worst deviation of the *other* loop from its setpoint after this step (2×2 only)
+  const ok = sim.loops.length === 2 ? 1 - j : null
+  const yo = ok != null ? H.h[sim.loops[ok].tank] : null
+  let cross = ok != null ? 0 : null
   for (let i = i0; i < tt.length; i++) {
+    if (yo) cross = Math.max(cross, Math.abs(H.sp[ok][i] - yo[i]))
     const r = (y[i] - from) / span
     if (t10 == null && r >= 0.1) t10 = tt[i]
     if (t90 == null && r >= 0.9) t90 = tt[i]
@@ -286,6 +321,8 @@ export function metrics(sim, j) {
     ise,
     elapsed: tt[last] - t0,
     ess: sp[last] - y[last],
+    cross,
+    crossTag: ok != null ? sim.loops[ok].tag : null,
     from,
     to,
   }

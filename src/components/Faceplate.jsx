@@ -55,6 +55,11 @@ export default function Faceplate({ sim, j, bump }) {
               )}
               <span className="unit">%</span>
               {sat && !man && <span className="note" style={{ marginLeft: 'auto', color: 'var(--hi)' }}>saturated</span>}
+              {sim.dec.mode !== 'off' && (
+                <span className="note" style={{ marginLeft: sat && !man ? 8 : 'auto' }} title="Actual pump output after the decoupler">
+                  {pump.tag} {fmt(sim.u()[L.pump], 1)} %
+                </span>
+              )}
             </div>
             {man ? (
               <input type="range" min="0" max="100" step="0.5" value={L.out} onChange={(e) => ((L.out = +e.target.value), bump())} aria-label={`${L.tag} manual output slider`} />
